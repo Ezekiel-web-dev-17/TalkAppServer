@@ -2,6 +2,7 @@ import express, { Application, Request, Response } from "express";
 import cookieParser from "cookie-parser";
 import prisma from "./lib/prisma.js";
 import redis from "./lib/redis.js";
+import mongoose from "./lib/mongo.js";
 import arcjetMiddleware from "./middlewares/arcjet.middleware.js";
 import { redisCache } from "./middlewares/redis.middleware.js";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
@@ -25,11 +26,12 @@ app.use((_req: Request, res: Response, next) => {
 app.use(arcjetMiddleware);
 
 /**
- * Health check handler (verifies PostgreSQL and Redis connectivity)
+ * Health check handler (verifies PostgreSQL, Redis, and MongoDB connectivity)
  */
 const healthCheckHandler = async (_req: Request, res: Response) => {
   let dbStatus = "disconnected";
   let redisStatus = "disconnected";
+  let mongoStatus = "disconnected";
 
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -50,7 +52,18 @@ const healthCheckHandler = async (_req: Request, res: Response) => {
     redisStatus = `error: ${(err as Error).message}`;
   }
 
-  const isHealthy = dbStatus === "connected" && redisStatus === "connected";
+  if (mongoose.connection.readyState === 1) {
+    mongoStatus = "connected";
+  } else if (mongoose.connection.readyState === 2) {
+    mongoStatus = "connecting";
+  } else if (!process.env.MONGODB_URI) {
+    mongoStatus = "not_configured";
+  }
+
+  const isHealthy =
+    dbStatus === "connected" &&
+    redisStatus === "connected" &&
+    (mongoStatus === "connected" || mongoStatus === "not_configured");
 
   res.status(isHealthy ? 200 : 503).json({
     status: isHealthy ? "healthy" : "degraded",
@@ -59,6 +72,7 @@ const healthCheckHandler = async (_req: Request, res: Response) => {
       server: "running",
       postgres: dbStatus,
       redis: redisStatus,
+      mongodb: mongoStatus,
     },
   });
 };

@@ -10,4 +10,5 @@ export const {
   JWT_SECRET,
   ARCJET_KEY,
   ARCJET_ENV,
+  MONGODB_URI,
 } = process.env;
