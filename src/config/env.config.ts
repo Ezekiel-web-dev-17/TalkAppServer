@@ -11,4 +11,5 @@ export const {
   ARCJET_KEY,
   ARCJET_ENV,
   MONGODB_URI,
+  CLIENT_URL,
 } = process.env;

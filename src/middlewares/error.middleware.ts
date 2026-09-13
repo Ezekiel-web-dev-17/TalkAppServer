@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import logger from "../lib/logger.js";
 
 /**
  * Standard Operational API Error Class
@@ -127,13 +128,14 @@ export const errorHandler = (
     message = "Malformed JSON request body.";
   }
 
-  // Log non-operational (unexpected) server errors
+  // Log errors using Winston logger
   if (statusCode >= 500) {
-    console.error("❌ [UNHANDLED ERROR]:", {
+    logger.error(`[SERVER ERROR] ${err.message}`, {
       name: err.name,
-      message: err.message,
       stack: err.stack,
     });
+  } else {
+    logger.warn(`[CLIENT ERROR] ${statusCode} - ${message}`, { details });
   }
 
   res.status(statusCode).json({

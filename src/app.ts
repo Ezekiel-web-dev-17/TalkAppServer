@@ -1,26 +1,56 @@
 import express, { Application, Request, Response } from "express";
+import cors from "cors";
 import cookieParser from "cookie-parser";
 import prisma from "./lib/prisma.js";
 import redis from "./lib/redis.js";
 import mongoose from "./lib/mongo.js";
+import { CLIENT_URL, NODE_ENV } from "./config/env.config.js";
+import requestLogger from "./middlewares/logger.middleware.js";
 import arcjetMiddleware from "./middlewares/arcjet.middleware.js";
 import { redisCache } from "./middlewares/redis.middleware.js";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
 
 const app: Application = express();
 
-// Security and standard request parsing middlewares
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use(cookieParser());
-
-// Security headers middleware
+// Security Headers Middleware
 app.use((_req: Request, res: Response, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-XSS-Protection", "1; mode=block");
   next();
 });
+
+// CORS Configuration
+const allowedOrigins = [
+  CLIENT_URL || "http://localhost:3000",
+  "http://localhost:5173", // Vite default dev server
+  "http://localhost:3000", // React / Next.js default dev server
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, Postman)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin) || NODE_ENV !== "production") {
+        return callback(null, true);
+      }
+      return callback(new Error("Blocked by CORS policy"));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+  })
+);
+
+// Standard Request Parsing Middlewares
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(cookieParser());
+
+// Winston HTTP Request Logging Middleware
+app.use(requestLogger);
 
 // Arcjet Security Middleware: Shield (WAF/OWASP), Bot Detection, and Sliding Window Rate Limiting
 app.use(arcjetMiddleware);

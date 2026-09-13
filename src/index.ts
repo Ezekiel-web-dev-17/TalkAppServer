@@ -1,8 +1,9 @@
-import { PORT } from "./config/env.config.js";
+import { PORT, NODE_ENV } from "./config/env.config.js";
 import app from "./app.js";
 import prisma from "./lib/prisma.js";
 import redis from "./lib/redis.js";
 import { connectMongoDB, disconnectMongoDB } from "./lib/mongo.js";
+import logger from "./lib/logger.js";
 
 const serverPort = PORT || 5000;
 
@@ -10,16 +11,16 @@ const serverPort = PORT || 5000;
 connectMongoDB();
 
 const server = app.listen(serverPort, () => {
-  console.log(`Server listening on port ${serverPort}`);
+  logger.info(`Server running in ${NODE_ENV || "development"} mode on port ${serverPort}`);
 });
 
 const gracefulShutdown = async () => {
-  console.log("Shutting down gracefully...");
+  logger.info("Initiating graceful shutdown...");
   server.close(async () => {
     await prisma.$disconnect();
     redis.disconnect();
     await disconnectMongoDB();
-    console.log("Server and database connections closed.");
+    logger.info("Server and database connections closed.");
     process.exit(0);
   });
 };
