@@ -7,14 +7,85 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ChangeType {
+  USERNAME
+  LEFT
+  REMOVED
+}
+
+enum Chat {
+  DM
+  GROUP
+  YOU
+}
+
+enum MediaFormat {
+  DOC
+  LINK
+  MEDIA
+}
+
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  username  String   @unique
-  password  String
-  avatar    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(uuid())
+
+  // The Clerk user ID — the bridge between Clerk and your DB
+  // This is set once when the Clerk webhook fires on user.created
+  clerkId     String    @unique @map("clerk_id")
+
+  email       String    @unique
+  username    String    @unique
+
+  // Profile fields — owned and managed by YOUR application
+  name        String?
+  bio         String?
+  avatarUrl   String?   @map("avatar_url")
+  lastSeenAt  DateTime? @map("last_seen_at")
+  isVerified  Boolean   @default(false) @map("is_verified")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Future relations (add as you build each phase)
+  // conversations ConversationMember[]
+  // sentMessages  Message[]
 
   @@map("users")
+}
+
+model Media {
+  id             String        @id @default(uuid())
+  mediaType      MediaFormat[] @map("media_type")
+  content        String
+  messageId      String        @unique @map("message_id")
+  conversationId String?       @map("conversation_id")
+  conversation   Conversation? @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
+
+  @@map("media")
+}
+
+model MemberChange {
+  id             String        @id @default(uuid())
+  changeType     ChangeType    @map("change_type")
+  change         String        @db.VarChar(30)
+  conversationId String?       @map("conversation_id")
+  conversation   Conversation? @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  expiresAt      DateTime      @map("expires_at")
+
+  @@map("member_changes")
+}
+
+model Conversation {
+  conversationId  String         @id @default(uuid()) @map("conversation_id")
+  members         String[]
+  type            Chat           @default(DM)
+  image           String?
+  description     String?        @db.VarChar(200)
+  advancedPrivacy Boolean        @default(false) @map("advanced_privacy")
+  changes         MemberChange[]
+  allMedia        Media[]
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@map("conversations")
 }
