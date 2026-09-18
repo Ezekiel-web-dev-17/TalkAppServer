@@ -44,6 +44,11 @@ app.use(
   })
 );
 
+// ✅ Mount the webhook route BEFORE express.json() at the top-level
+// because webhooks need the raw body for signature verification
+import webhookRouter from "./routes/webhook.routes.js";
+app.use("/api/v1/webhooks", webhookRouter);
+
 // Standard Request Parsing Middlewares
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
