@@ -139,10 +139,13 @@ v1Router.get("/", redisCache({ ttlSeconds: 120 }), (_req: Request, res: Response
 
 v1Router.get("/health", healthCheckHandler);
 
-// Mounting point for upcoming feature routes:
-// v1Router.use("/auth", authRouter);
-// v1Router.use("/users", userRouter);
-// v1Router.use("/messages", messageRouter);
+// Mounting feature routes
+import userRouter from "./routes/user.routes.js";
+import messageRouter, { conversationMessagesRouter } from "./routes/message.routes.js";
+
+v1Router.use("/users", userRouter);
+v1Router.use("/messages", messageRouter);
+v1Router.use("/conversations/:conversationId/messages", conversationMessagesRouter);
 
 // Mount versioned API routes
 app.use("/api/v1", v1Router);
