@@ -10,9 +10,15 @@ const serverPort = PORT || 5000;
 // Connect to MongoDB (if MONGODB_URI is provided)
 connectMongoDB();
 
+import { initSocket } from "./lib/socket.js";
+
 const server = app.listen(serverPort, () => {
   logger.info(`Server running in ${NODE_ENV || "development"} mode on port ${serverPort}`);
 });
+
+// Initialize Socket.io real-time WebSocket server
+initSocket(server);
+logger.info("Real-time WebSocket server initialized.");
 
 const gracefulShutdown = async () => {
   logger.info("Initiating graceful shutdown...");

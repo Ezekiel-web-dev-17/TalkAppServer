@@ -30,6 +30,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.10.0",
     "npm": "^12.0.2",
+    "socket.io": "^4.8.3",
     "svix": "^2.5.0",
     "winston": "^3.19.0",
     "zod": "^4.6.5"
