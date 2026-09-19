@@ -140,13 +140,23 @@ export const MemberChangeSchema = z.object({
   expiresAt: z.coerce.date(),
 });
 
+/** Enum values mirroring Prisma's MemberRole */
+export const MemberRoleEnum = z.enum(["USER", "ADMIN", "MEMBER"]);
+
+/** A conversation membership record linking a user to a conversation */
+export const ConversationMemberSchema = z.object({
+  id: z.string().uuid().optional(),
+  conversationId: z.string().uuid().optional(),
+  userId: z.string().uuid("User ID must be a valid UUID"),
+  role: MemberRoleEnum.default("MEMBER"),
+  joinedAt: z.coerce.date().optional(),
+  lastReadAt: z.coerce.date().nullable().optional(),
+});
+
 /** Full Conversation entity — used for response validation and internal checks */
 export const ConversationSchema = z.object({
   conversationId: z.string().uuid("Conversation ID must be a valid UUID"),
-  members: z
-    .array(z.string().uuid("Each member must be a valid UUID"))
-    .min(1, "A conversation must have at least one member")
-    .max(1000, "A conversation cannot have more than 1000 members"),
+  name: z.string().max(100, "Name cannot exceed 100 characters").nullable().optional(),
   type: ChatTypeEnum.default("DM"),
   image: z.string().url("Image must be a valid URL").nullable().optional(),
   description: z
@@ -154,7 +164,11 @@ export const ConversationSchema = z.object({
     .max(200, "Description cannot exceed 200 characters")
     .nullable()
     .optional(),
+  dmKey: z.string().nullable().optional(),
   advancedPrivacy: z.boolean().default(false),
+  lastActivityAt: z.coerce.date().optional(),
+  lastMessagePreview: z.string().nullable().optional(),
+  members: z.array(ConversationMemberSchema).optional().default([]),
   changes: z.array(MemberChangeSchema).optional().default([]),
   allMedia: z.array(MediaSchema).optional().default([]),
   createdAt: z.coerce.date(),
@@ -164,4 +178,6 @@ export const ConversationSchema = z.object({
 // Inferred TypeScript types — entities
 export type MediaInput = z.infer<typeof MediaSchema>;
 export type MemberChangeInput = z.infer<typeof MemberChangeSchema>;
+export type ConversationMemberInput = z.infer<typeof ConversationMemberSchema>;
 export type ConversationInput = z.infer<typeof ConversationSchema>;
+

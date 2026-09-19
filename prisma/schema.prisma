@@ -7,6 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum MemberRole {
+  USER
+  ADMIN
+  MEMBER
+}
+
 enum ChangeType {
   USERNAME
   LEFT
@@ -45,11 +51,25 @@ model User {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  // Future relations (add as you build each phase)
-  // conversations ConversationMember[]
+  // Relations
+  conversations ConversationMember[]
   // sentMessages  Message[]
 
   @@map("users")
+}
+
+model ConversationMember {
+  id             String        @id @default(uuid())
+  conversationId String        @map("conversation_id")
+  conversation   Conversation  @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
+  userId         String        @map("user_id")
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           MemberRole    @default(MEMBER)
+  joinedAt       DateTime      @default(now()) @map("joined_at")
+  lastReadAt     DateTime?     @map("last_read_at")
+
+  @@unique([conversationId, userId])
+  @@map("conversation_members")
 }
 
 model Media {
@@ -76,16 +96,23 @@ model MemberChange {
 }
 
 model Conversation {
-  conversationId  String         @id @default(uuid()) @map("conversation_id")
-  members         String[]
-  type            Chat           @default(DM)
-  image           String?
-  description     String?        @db.VarChar(200)
-  advancedPrivacy Boolean        @default(false) @map("advanced_privacy")
-  changes         MemberChange[]
-  allMedia        Media[]
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+  conversationId     String               @id @default(uuid()) @map("conversation_id")
+  name               String?              @db.VarChar(100)
+  type               Chat                 @default(DM)
+  image              String?
+  description        String?              @db.VarChar(200)
+  dmKey              String?              @unique @map("dm_key")
+  advancedPrivacy    Boolean              @default(false) @map("advanced_privacy")
+  lastActivityAt     DateTime             @default(now()) @map("last_activity_at")
+  lastMessagePreview String?              @map("last_message_preview")
 
+  members            ConversationMember[]
+  changes            MemberChange[]
+  allMedia           Media[]
+
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  @@index([lastActivityAt(sort: Desc)])
   @@map("conversations")
 }
