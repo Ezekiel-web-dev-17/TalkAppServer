@@ -71,15 +71,22 @@ export const requireAuth = async (
             clerkUser.username ??
             primaryEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "_");
 
+          const isVerified = clerkUser.emailAddresses?.some(
+            (e) => e.verification?.status === "verified"
+          );
+
           dbUser = await prisma.user.upsert({
             where: { clerkId: clerkUserId },
-            update: {},
+            update: {
+              ...(isVerified !== undefined ? { isVerified } : {}),
+            },
             create: {
               clerkId: clerkUserId,
               email: primaryEmail,
               username: `${baseUsername}_${clerkUserId.slice(-4)}`,
               name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null,
               avatarUrl: clerkUser.imageUrl || null,
+              isVerified: isVerified || false,
             },
           });
         }
@@ -103,4 +110,21 @@ export const requireAuth = async (
   } catch (err) {
     next(ApiError.unauthorized("Invalid or expired authentication token"));
   }
+};
+
+/**
+ * requireVerified — Guards sensitive or privileged operations (e.g. creating large groups, sending links).
+ * Requires the user to have isVerified === true.
+ */
+export const requireVerified = (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): void => {
+  if (!req.auth?.dbUser?.isVerified) {
+    return next(
+      ApiError.forbidden("Identity verification required to perform this action")
+    );
+  }
+  next();
 };

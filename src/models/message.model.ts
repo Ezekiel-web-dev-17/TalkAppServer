@@ -1,5 +1,29 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
+export interface ISenderSnapshot {
+  id: string;
+  username: string;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+export interface IReplySnapshot {
+  messageId: string;
+  senderId: string;
+  senderName: string;
+  contentSnippet: string;
+  contentType: string;
+}
+
+export interface IMessageAttachment {
+  url: string;
+  type: "IMAGE" | "AUDIO" | "VIDEO" | "FILE";
+  mimeType?: string;
+  fileName?: string;
+  sizeBytes?: number;
+  thumbnailUrl?: string;
+}
+
 export interface IMessageReaction {
   userId: string;
   emoji: string;
@@ -27,9 +51,13 @@ export interface IMessage extends Document {
   id: string;
   conversationId: string;
   senderId: string;
+  // Denormalized sender snapshot to eliminate relational user lookups during pagination
+  sender: ISenderSnapshot;
   content: string;
-  contentType: "TEXT" | "IMAGE" | "AUDIO" | "FILE" | "SYSTEM";
-  replyToId: mongoose.Types.ObjectId | null;
+  contentType: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "FILE" | "SYSTEM";
+  attachments: IMessageAttachment[];
+  // Denormalized quote snapshot to render replies instantly without fetching parent message
+  replyTo: IReplySnapshot | null;
   isReply: boolean;
   isEdited: boolean;
   deletedAt: Date | null;
@@ -40,6 +68,43 @@ export interface IMessage extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
+
+const senderSnapshotSchema = new Schema<ISenderSnapshot>(
+  {
+    id: { type: String, required: true },
+    username: { type: String, required: true },
+    name: { type: String, default: null },
+    avatarUrl: { type: String, default: null },
+  },
+  { _id: false }
+);
+
+const replySnapshotSchema = new Schema<IReplySnapshot>(
+  {
+    messageId: { type: String, required: true },
+    senderId: { type: String, required: true },
+    senderName: { type: String, required: true },
+    contentSnippet: { type: String, required: true, maxlength: 120 },
+    contentType: { type: String, default: "TEXT" },
+  },
+  { _id: false }
+);
+
+const attachmentSchema = new Schema<IMessageAttachment>(
+  {
+    url: { type: String, required: true },
+    type: {
+      type: String,
+      enum: ["IMAGE", "AUDIO", "VIDEO", "FILE"],
+      required: true,
+    },
+    mimeType: { type: String },
+    fileName: { type: String },
+    sizeBytes: { type: Number },
+    thumbnailUrl: { type: String },
+  },
+  { _id: false }
+);
 
 const messageReactionSchema = new Schema<IMessageReaction>(
   {
@@ -88,6 +153,10 @@ const messageSchema = new Schema<IMessage>(
       required: true,
       index: true,
     },
+    sender: {
+      type: senderSnapshotSchema,
+      required: true,
+    },
     content: {
       type: String,
       required: true,
@@ -95,13 +164,16 @@ const messageSchema = new Schema<IMessage>(
     },
     contentType: {
       type: String,
-      enum: ["TEXT", "IMAGE", "AUDIO", "FILE", "SYSTEM"],
+      enum: ["TEXT", "IMAGE", "AUDIO", "VIDEO", "FILE", "SYSTEM"],
       default: "TEXT",
       required: true,
     },
-    replyToId: {
-      type: Schema.Types.ObjectId,
-      ref: "Message",
+    attachments: {
+      type: [attachmentSchema],
+      default: [],
+    },
+    replyTo: {
+      type: replySnapshotSchema,
       default: null,
     },
     isReply: {

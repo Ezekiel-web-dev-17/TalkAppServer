@@ -15,6 +15,14 @@ interface AuthenticatedSocket extends Socket {
 
 let io: Server | null = null;
 
+// In-memory active user socket tracking (handles multi-device/multi-tab connections)
+const userSocketCounts = new Map<string, number>();
+
+/** Check whether a user has at least one active WebSocket connection */
+export function isUserOnline(userId: string): boolean {
+  return (userSocketCounts.get(userId) || 0) > 0;
+}
+
 /**
  * Initialize Socket.io server and bind event handlers.
  */
@@ -33,8 +41,7 @@ export function initSocket(server: HttpServer): Server {
   io.use(async (socket, next) => {
     try {
       const authHeader =
-        socket.handshake.auth?.token ||
-        socket.handshake.headers?.authorization;
+        socket.handshake.auth?.token || socket.handshake.headers?.authorization;
 
       if (!authHeader) {
         return next(new Error("Authentication error: No token provided"));
@@ -56,7 +63,9 @@ export function initSocket(server: HttpServer): Server {
       });
 
       if (!user) {
-        return next(new Error("Authentication error: User not found in database"));
+        return next(
+          new Error("Authentication error: User not found in database"),
+        );
       }
 
       socket.data.user = user;
@@ -73,10 +82,26 @@ export function initSocket(server: HttpServer): Server {
     const authSocket = socket as AuthenticatedSocket;
     const user = authSocket.data.user;
 
-    logger.info(`[SOCKET] Client connected: user=${user.username} (${user.id}) socket=${socket.id}`);
+    // Track active connection count
+    const activeCount = (userSocketCounts.get(user.id) || 0) + 1;
+    userSocketCounts.set(user.id, activeCount);
+
+    logger.info(
+      `[SOCKET] Client connected: user=${user.username} (${user.id}) socket=${socket.id} (active=${activeCount})`,
+    );
 
     // Join personal user room for direct push notifications
     socket.join(`user:${user.id}`);
+
+    // If this is the user's first active connection, broadcast that they are ONLINE
+    if (activeCount === 1) {
+      io?.emit("user_presence", {
+        userId: user.id,
+        username: user.username,
+        isOnline: true,
+        lastSeenAt: null,
+      });
+    }
 
     // Join a conversation room (with membership authorization)
     socket.on("join_conversation", async (conversationId: string) => {
@@ -94,9 +119,13 @@ export function initSocket(server: HttpServer): Server {
 
         if (isMember) {
           socket.join(`conversation:${conversationId}`);
-          logger.debug(`[SOCKET] User ${user.username} joined room conversation:${conversationId}`);
+          logger.debug(
+            `[SOCKET] User ${user.username} joined room conversation:${conversationId}`,
+          );
         } else {
-          socket.emit("error", { message: "Not authorized to join this conversation" });
+          socket.emit("error", {
+            message: "Not authorized to join this conversation",
+          });
         }
       } catch (err) {
         logger.error(`[SOCKET] join_conversation error:`, err);
@@ -107,7 +136,9 @@ export function initSocket(server: HttpServer): Server {
     socket.on("leave_conversation", (conversationId: string) => {
       if (conversationId) {
         socket.leave(`conversation:${conversationId}`);
-        logger.debug(`[SOCKET] User ${user.username} left room conversation:${conversationId}`);
+        logger.debug(
+          `[SOCKET] User ${user.username} left room conversation:${conversationId}`,
+        );
       }
     });
 
@@ -134,8 +165,35 @@ export function initSocket(server: HttpServer): Server {
       }
     });
 
-    socket.on("disconnect", (reason) => {
-      logger.info(`[SOCKET] Client disconnected: user=${user.username} reason=${reason}`);
+    socket.on("disconnect", async (reason) => {
+      const remaining = (userSocketCounts.get(user.id) || 1) - 1;
+
+      if (remaining <= 0) {
+        userSocketCounts.delete(user.id);
+        const now = new Date();
+
+        try {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lastSeenAt: now },
+          });
+        } catch (dbErr) {
+          logger.error(`[SOCKET] Error updating lastSeenAt:`, dbErr);
+        }
+
+        // Broadcast to all clients that user went OFFLINE
+        io?.emit("user_presence", {
+          userId: user.id,
+          username: user.username,
+          isOnline: false,
+          lastSeenAt: now,
+        });
+
+        logger.info(`[SOCKET] User ${user.username} went OFFLINE (reason: ${reason})`);
+      } else {
+        userSocketCounts.set(user.id, remaining);
+        logger.debug(`[SOCKET] User ${user.username} closed one tab (${remaining} remaining)`);
+      }
     });
   });
 
@@ -147,7 +205,9 @@ export function initSocket(server: HttpServer): Server {
  */
 export function getIO(): Server {
   if (!io) {
-    throw new Error("Socket.io has not been initialized. Call initSocket(server) first.");
+    throw new Error(
+      "Socket.io has not been initialized. Call initSocket(server) first.",
+    );
   }
   return io;
 }
@@ -162,13 +222,19 @@ export function emitNewMessage(conversationId: string, message: unknown): void {
   }
 }
 
-export function emitMessageEdited(conversationId: string, message: unknown): void {
+export function emitMessageEdited(
+  conversationId: string,
+  message: unknown,
+): void {
   if (io) {
     io.to(`conversation:${conversationId}`).emit("message_edited", message);
   }
 }
 
-export function emitMessageDeleted(conversationId: string, messageId: string): void {
+export function emitMessageDeleted(
+  conversationId: string,
+  messageId: string,
+): void {
   if (io) {
     io.to(`conversation:${conversationId}`).emit("message_deleted", {
       conversationId,
@@ -179,7 +245,7 @@ export function emitMessageDeleted(conversationId: string, messageId: string): v
 
 export function emitReactionUpdated(
   conversationId: string,
-  data: { messageId: string; reactions: unknown }
+  data: { messageId: string; reactions: unknown },
 ): void {
   if (io) {
     io.to(`conversation:${conversationId}`).emit("reaction_updated", data);
@@ -188,7 +254,7 @@ export function emitReactionUpdated(
 
 export function emitMessagesRead(
   conversationId: string,
-  data: { conversationId: string; userId: string; readAt: Date }
+  data: { conversationId: string; userId: string; readAt: Date },
 ): void {
   if (io) {
     io.to(`conversation:${conversationId}`).emit("messages_read", data);

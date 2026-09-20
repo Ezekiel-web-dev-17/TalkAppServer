@@ -8,111 +8,91 @@ datasource db {
 }
 
 enum MemberRole {
-  USER
   ADMIN
   MEMBER
 }
 
-enum ChangeType {
-  USERNAME
-  LEFT
-  REMOVED
-}
-
-enum Chat {
+enum ConversationType {
   DM
   GROUP
   YOU
 }
 
-enum MediaFormat {
-  DOC
-  LINK
-  MEDIA
-}
-
 model User {
-  id          String    @id @default(uuid())
+  id         String    @id @default(uuid())
 
   // The Clerk user ID — the bridge between Clerk and your DB
-  // This is set once when the Clerk webhook fires on user.created
-  clerkId     String    @unique @map("clerk_id")
+  clerkId    String    @unique @map("clerk_id")
+  email      String    @unique
+  username   String    @unique
 
-  email       String    @unique
-  username    String    @unique
+  // Profile fields managed by the application
+  name       String?
+  bio        String?
+  avatarUrl  String?   @map("avatar_url")
+  lastSeenAt DateTime? @map("last_seen_at")
+  isVerified Boolean   @default(false) @map("is_verified")
 
-  // Profile fields — owned and managed by YOUR application
-  name        String?
-  bio         String?
-  avatarUrl   String?   @map("avatar_url")
-  lastSeenAt  DateTime? @map("last_seen_at")
-  isVerified  Boolean   @default(false) @map("is_verified")
-
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   // Relations
   conversations ConversationMember[]
-  // sentMessages  Message[]
+  devices       Device[]
 
   @@map("users")
 }
 
-model ConversationMember {
-  id             String        @id @default(uuid())
-  conversationId String        @map("conversation_id")
-  conversation   Conversation  @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
-  userId         String        @map("user_id")
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role           MemberRole    @default(MEMBER)
-  joinedAt       DateTime      @default(now()) @map("joined_at")
-  lastReadAt     DateTime?     @map("last_read_at")
+model Device {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceName  String   @map("device_name")
+  deviceType  String   @map("device_type")
+  deviceToken String   @unique @map("device_token")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@unique([conversationId, userId])
-  @@map("conversation_members")
-}
-
-model Media {
-  id             String        @id @default(uuid())
-  mediaType      MediaFormat[] @map("media_type")
-  content        String
-  messageId      String        @unique @map("message_id")
-  conversationId String?       @map("conversation_id")
-  conversation   Conversation? @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
-
-  @@map("media")
-}
-
-model MemberChange {
-  id             String        @id @default(uuid())
-  changeType     ChangeType    @map("change_type")
-  change         String        @db.VarChar(30)
-  conversationId String?       @map("conversation_id")
-  conversation   Conversation? @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
-  createdAt      DateTime      @default(now()) @map("created_at")
-  expiresAt      DateTime      @map("expires_at")
-
-  @@map("member_changes")
+  @@index([userId])
+  @@map("devices")
 }
 
 model Conversation {
-  conversationId     String               @id @default(uuid()) @map("conversation_id")
-  name               String?              @db.VarChar(100)
-  type               Chat                 @default(DM)
+  id                 String           @id @default(uuid())
+  name               String?          @db.VarChar(100)
+  type               ConversationType @default(DM)
   image              String?
-  description        String?              @db.VarChar(200)
-  dmKey              String?              @unique @map("dm_key")
-  advancedPrivacy    Boolean              @default(false) @map("advanced_privacy")
-  lastActivityAt     DateTime             @default(now()) @map("last_activity_at")
-  lastMessagePreview String?              @map("last_message_preview")
+  description        String?          @db.VarChar(200)
+  dmKey              String?          @unique @map("dm_key")
+  memberCount        Int              @default(0) @map("member_count")
+  lastActivityAt     DateTime         @default(now()) @map("last_activity_at")
+
+  // Denormalized inbox summary for instant O(1) inbox rendering without querying MongoDB
+  lastMessage        Json?            @map("last_message") // { id, senderId, senderName, text, contentType, createdAt }
+
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
 
   members            ConversationMember[]
-  changes            MemberChange[]
-  allMedia           Media[]
-
-  createdAt          DateTime             @default(now()) @map("created_at")
-  updatedAt          DateTime             @updatedAt @map("updated_at")
 
   @@index([lastActivityAt(sort: Desc)])
   @@map("conversations")
+}
+
+model ConversationMember {
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String       @map("user_id")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           MemberRole   @default(MEMBER)
+
+  // Denormalized unread count for fast UI badge display
+  unreadCount    Int          @default(0) @map("unread_count")
+  lastReadAt     DateTime?    @map("last_read_at")
+  joinedAt       DateTime     @default(now()) @map("joined_at")
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_members")
 }

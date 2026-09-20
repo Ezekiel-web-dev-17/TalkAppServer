@@ -1,12 +1,13 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../lib/prisma.js";
 import { ApiError } from "../middlewares/error.middleware.js";
+import { isUserOnline } from "../lib/socket.js";
 
 /** GET /api/v1/users/me — Return current user's profile */
 export const getMyProfile = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   const { clerkUserId } = req.auth; // set by requireAuth middleware
 
@@ -25,11 +26,30 @@ export const getMyProfile = async (
   }
 };
 
+/** POST /api/v1/users/heartbeat — Touch current user's lastSeenAt */
+export const heartbeat = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const now = new Date();
+    await prisma.user.update({
+      where: { id: req.auth.dbUser.id },
+      data: { lastSeenAt: now },
+    });
+
+    res.json({ success: true, lastSeenAt: now });
+  } catch (err) {
+    next(err);
+  }
+};
+
 /** PATCH /api/v1/users/me — Update current user's profile fields */
 export const updateMyProfile = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   const { clerkUserId } = req.auth;
 
@@ -65,7 +85,7 @@ export const updateMyProfile = async (
 export const getUserById = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const id = req.params.id as string;
@@ -78,6 +98,7 @@ export const getUserById = async (
         bio: true,
         avatarUrl: true,
         lastSeenAt: true,
+        isVerified: true,
         createdAt: true,
         // Never expose clerkId or email in public profiles
       },
@@ -87,7 +108,15 @@ export const getUserById = async (
       return next(ApiError.notFound("User not found"));
     }
 
-    res.json({ success: true, data: user });
+    const isOnline = isUserOnline(user.id);
+
+    res.json({
+      success: true,
+      data: {
+        ...user,
+        isOnline,
+      },
+    });
   } catch (err) {
     next(err);
   }

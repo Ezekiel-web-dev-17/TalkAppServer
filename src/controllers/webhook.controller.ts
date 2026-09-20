@@ -7,7 +7,11 @@ import logger from "../lib/logger.js";
 // Types for Clerk webhook event payloads
 interface ClerkUserData {
   id: string;
-  email_addresses: { email_address: string; id: string }[];
+  email_addresses: {
+    email_address: string;
+    id: string;
+    verification?: { status: string } | null;
+  }[];
   username: string | null;
   first_name: string | null;
   last_name: string | null;
@@ -76,6 +80,10 @@ export const clerkWebhookHandler = async (
           break;
         }
 
+        const isVerified = data.email_addresses.some(
+          (e) => e.verification?.status === "verified"
+        );
+
         // Generate a username from Clerk's username or fallback to email prefix
         const baseUsername = data.username
           ?? primaryEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "_");
@@ -91,6 +99,7 @@ export const clerkWebhookHandler = async (
                 username,
                 name:      [data.first_name, data.last_name].filter(Boolean).join(" ") || null,
                 avatarUrl: data.image_url || null,
+                isVerified,
               },
             });
             break; // success
@@ -109,14 +118,18 @@ export const clerkWebhookHandler = async (
 
       case "user.updated": {
         const data = event.data as ClerkUserData;
-        const primaryEmail = data.email_addresses[0]?.email_address;
+        const primaryEmail = data.email_addresses?.[0]?.email_address;
+        const isVerified = data.email_addresses?.some(
+          (e) => e.verification?.status === "verified"
+        );
 
-        // Sync email and avatar from Clerk (these are Clerk-managed)
+        // Sync email, avatar, and verification status from Clerk
         await prisma.user.updateMany({
           where: { clerkId: data.id },
           data: {
             ...(primaryEmail ? { email: primaryEmail } : {}),
             ...(data.image_url !== undefined ? { avatarUrl: data.image_url } : {}),
+            ...(isVerified !== undefined ? { isVerified } : {}),
           },
         });
 

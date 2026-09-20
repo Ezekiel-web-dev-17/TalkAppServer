@@ -6,6 +6,7 @@ import {
   getMyProfile,
   updateMyProfile,
   getUserById,
+  heartbeat,
 } from "../controllers/user.controller.js";
 
 const router = Router();
@@ -13,6 +14,7 @@ const router = Router();
 router.use(requireAuth);
 
 router.get("/me", getMyProfile);
+router.post("/me/heartbeat", heartbeat);
 router.patch("/me", validate(UpdateProfileSchema), updateMyProfile);
 router.get("/:id", getUserById);
 
