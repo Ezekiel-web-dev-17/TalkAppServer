@@ -12,7 +12,7 @@ export const SendMessageSchema = z.object({
     .max(5000, "Message cannot exceed 5000 characters")
     .trim(),
   type: z.enum(["TEXT", "IMAGE", "AUDIO", "FILE"]).default("TEXT"),
-  replyToMessageId: z.string().uuid("Invalid message ID").optional(),
+  replyToMessageId: z.string().min(1).optional(),
 });
 
 /** Body for editing an existing message */
@@ -26,14 +26,14 @@ export const EditMessageSchema = z.object({
 
 /** Query params for paginating through a conversation's message history */
 export const MessagePaginationQuerySchema = z.object({
-  /** UUID of the message to fetch messages *before* (cursor-based pagination) */
-  before: z.string().uuid().optional(),
+  /** ID of the message or timestamp to fetch messages *before* (cursor-based pagination) */
+  before: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
 });
 
 /** Route param: /:messageId */
 export const MessageIdParamSchema = z.object({
-  messageId: z.string().uuid("Invalid message ID format"),
+  messageId: z.string().min(1, "Message ID is required"),
 });
 
 /** Body for toggling an emoji reaction on a message */

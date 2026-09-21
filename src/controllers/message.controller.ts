@@ -7,7 +7,7 @@ import { Request, Response, NextFunction } from "express";
 export const sendMessage = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {};
 
 /**
@@ -17,7 +17,7 @@ export const sendMessage = async (
 export const getConversationMessages = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {};
 
 /**
@@ -27,7 +27,7 @@ export const getConversationMessages = async (
 export const editMessage = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {};
 
 /**
@@ -37,7 +37,7 @@ export const editMessage = async (
 export const deleteMessage = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {};
 
 /**
@@ -47,7 +47,7 @@ export const deleteMessage = async (
 export const toggleReaction = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {};
 
 /**
@@ -57,5 +57,5 @@ export const toggleReaction = async (
 export const markConversationAsRead = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {};
