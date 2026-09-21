@@ -19,22 +19,25 @@ enum ConversationType {
 }
 
 model User {
-  id         String    @id @default(uuid())
+  id         String         @id @default(uuid())
 
   // The Clerk user ID — the bridge between Clerk and your DB
-  clerkId    String    @unique @map("clerk_id")
-  email      String    @unique
-  username   String    @unique
+  clerkId    String         @unique @map("clerk_id")
+  email      String         @unique
+  username   String         @unique
 
   // Profile fields managed by the application
   name       String?
   bio        String?
-  avatarUrl  String?   @map("avatar_url")
-  lastSeenAt DateTime? @map("last_seen_at")
-  isVerified Boolean   @default(false) @map("is_verified")
+  avatarUrl  String?        @map("avatar_url")
+  lastSeenAt DateTime?      @map("last_seen_at")
+  isVerified Boolean        @default(false) @map("is_verified")
 
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  starred    String[]       @default([])
+  archived   String[]       @default([])
 
   // Relations
   conversations ConversationMember[]
