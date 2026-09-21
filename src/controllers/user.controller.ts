@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import prisma from "../lib/prisma.js";
 import { ApiError } from "../middlewares/error.middleware.js";
 import { isUserOnline } from "../lib/socket.js";
+import UserSettingsModel from "../models/user-settings.model.js";
 
 /** GET /api/v1/users/me — Return current user's profile */
 export const getMyProfile = async (
@@ -119,5 +120,62 @@ export const getUserById = async (
     });
   } catch (err) {
     next(err);
+  }
+};
+
+/** GET /api/v1/users/me/settings — Retrieve current user's settings (creates defaults if none exist) */
+export const getMySettings = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const userId = req.auth.dbUser.id;
+
+    let settings = await UserSettingsModel.findOne({ userId });
+
+    if (!settings) {
+      settings = await UserSettingsModel.create({ userId });
+    }
+
+    res.json({
+      success: true,
+      data: settings,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** PATCH /api/v1/users/me/settings — Update current user's settings */
+export const updateUserSettings = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const targetUserId = req.auth.dbUser.id;
+
+    let settings = await UserSettingsModel.findOne({ userId: targetUserId });
+
+    if (!settings) {
+      settings = new UserSettingsModel({ userId: targetUserId });
+    }
+
+    // Safely deep merge updates into document without wiping subdocuments
+    settings.set(req.body);
+
+    // Ensure userId remains immutable
+    settings.userId = targetUserId;
+
+    await settings.save();
+
+    res.json({
+      success: true,
+      message: "Settings updated successfully",
+      data: settings,
+    });
+  } catch (error) {
+    next(error);
   }
 };
