@@ -25,10 +25,13 @@ declare global {
   }
 }
 
+import { getAuthTokenFromCookies } from "../helpers/cookie.helper.js";
+
 /**
- * requireAuth — Protects a route by verifying the Clerk session token.
+ * requireAuth — Protects a route by verifying the session token from Cookies.
  *
- * Reads the Authorization: Bearer <token> header.
+ * Primary: Reads from the Cookie header (__session, token, session, or jwt).
+ * Fallback: Reads from Authorization: Bearer <token> header.
  * 1. Verifies the JWT cryptographically via Clerk.
  * 2. Fetches/connects the corresponding user record in the SQL database.
  * 3. Attaches { clerkUserId, sessionId, dbUser } to req.auth.
@@ -38,13 +41,16 @@ export const requireAuth = async (
   _res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const authHeader = req.headers.authorization;
+  // Extract token from Cookie header (req.cookies or raw Cookie header), with fallback to Authorization header
+  const token =
+    getAuthTokenFromCookies(req.cookies, req.headers.cookie) ||
+    (req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.split(" ")[1]
+      : undefined);
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return next(ApiError.unauthorized("No authentication token provided"));
+  if (!token) {
+    return next(ApiError.unauthorized("Authentication error: No session cookie provided"));
   }
-
-  const token = authHeader.split(" ")[1];
 
   try {
     // 1. Verify token signature and expiration

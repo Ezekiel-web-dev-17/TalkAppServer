@@ -5,6 +5,7 @@ import { User } from "@prisma/client";
 import { CLERK_SECRET_KEY, CLIENT_URL } from "../config/env.config.js";
 import prisma from "./prisma.js";
 import logger from "./logger.js";
+import { getAuthTokenFromCookies } from "../helpers/cookie.helper.js";
 
 interface AuthenticatedSocket extends Socket {
   data: {
@@ -40,16 +41,17 @@ export function initSocket(server: HttpServer): Server {
   // Authentication Middleware for WebSocket Connections
   io.use(async (socket, next) => {
     try {
-      const authHeader =
-        socket.handshake.auth?.token || socket.handshake.headers?.authorization;
+      const cookieHeader = socket.handshake.headers?.cookie;
+      const token =
+        getAuthTokenFromCookies(undefined, cookieHeader) ||
+        socket.handshake.auth?.token ||
+        (socket.handshake.headers?.authorization?.startsWith("Bearer ")
+          ? socket.handshake.headers.authorization.split(" ")[1]
+          : socket.handshake.headers?.authorization);
 
-      if (!authHeader) {
-        return next(new Error("Authentication error: No token provided"));
+      if (!token) {
+        return next(new Error("Authentication error: No session cookie provided"));
       }
-
-      const token = authHeader.startsWith("Bearer ")
-        ? authHeader.split(" ")[1]
-        : authHeader;
 
       const payload = await verifyToken(token, { secretKey: CLERK_SECRET_KEY });
       const clerkUserId = payload.sub;
