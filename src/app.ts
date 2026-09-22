@@ -1,6 +1,9 @@
 import express, { Application, Request, Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import fileUpload from "express-fileupload";
+import os from "node:os";
+import path from "node:path";
 import prisma from "./lib/prisma.js";
 import redis from "./lib/redis.js";
 import mongoose from "./lib/mongo.js";
@@ -56,7 +59,17 @@ app.use("/api/v1/webhooks", webhookRouter);
 // Standard Request Parsing Middlewares
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+import { MAX_ATTACHMENT_SIZE_BYTES } from "./lib/s3.js";
 app.use(cookieParser());
+app.use(
+  fileUpload({
+    useTempFiles: true,
+    tempFileDir: path.join(os.tmpdir(), "talkapp_uploads"),
+    createParentPath: true,
+    limits: { fileSize: MAX_ATTACHMENT_SIZE_BYTES },
+    abortOnLimit: true,
+  })
+);
 
 // Winston HTTP Request Logging Middleware
 app.use(requestLogger);
@@ -146,10 +159,12 @@ v1Router.get("/health", healthCheckHandler);
 // Mounting feature routes
 import userRouter from "./routes/user.routes.js";
 import messageRouter, { conversationMessagesRouter } from "./routes/message.routes.js";
+import attachmentRouter from "./routes/attachment.routes.js";
 
 v1Router.use("/users", userRouter);
 v1Router.use("/messages", messageRouter);
 v1Router.use("/conversations/:conversationId/messages", conversationMessagesRouter);
+v1Router.use("/attachments", attachmentRouter);
 
 // Mount versioned API routes
 app.use("/api/v1", v1Router);

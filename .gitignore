@@ -35,3 +35,13 @@ logs/
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Terraform
+terraform/
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example

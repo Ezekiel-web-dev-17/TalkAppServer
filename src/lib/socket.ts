@@ -50,7 +50,9 @@ export function initSocket(server: HttpServer): Server {
           : socket.handshake.headers?.authorization);
 
       if (!token) {
-        return next(new Error("Authentication error: No session cookie provided"));
+        return next(
+          new Error("Authentication error: No session cookie provided"),
+        );
       }
 
       const payload = await verifyToken(token, { secretKey: CLERK_SECRET_KEY });
@@ -191,10 +193,14 @@ export function initSocket(server: HttpServer): Server {
           lastSeenAt: now,
         });
 
-        logger.info(`[SOCKET] User ${user.username} went OFFLINE (reason: ${reason})`);
+        logger.info(
+          `[SOCKET] User ${user.username} went OFFLINE (reason: ${reason})`,
+        );
       } else {
         userSocketCounts.set(user.id, remaining);
-        logger.debug(`[SOCKET] User ${user.username} closed one tab (${remaining} remaining)`);
+        logger.debug(
+          `[SOCKET] User ${user.username} closed one tab (${remaining} remaining)`,
+        );
       }
     });
   });

@@ -47,6 +47,15 @@ export interface IMessageEncryption {
   tag?: string;
 }
 
+export interface ILinkPreview {
+  url: string;
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+  siteName?: string;
+  favIcon?: string;
+}
+
 export interface IMessage extends Document {
   id: string;
   conversationId: string;
@@ -56,6 +65,8 @@ export interface IMessage extends Document {
   content: string;
   contentType: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "FILE" | "SYSTEM";
   attachments: IMessageAttachment[];
+  // Rich link preview metadata if message contains a URL
+  linkPreview?: ILinkPreview | null;
   // Denormalized quote snapshot to render replies instantly without fetching parent message
   replyTo: IReplySnapshot | null;
   isReply: boolean;
@@ -141,6 +152,18 @@ const messageEncryptionSchema = new Schema<IMessageEncryption>(
   { _id: false }
 );
 
+const linkPreviewSchema = new Schema<ILinkPreview>(
+  {
+    url: { type: String, required: true },
+    title: { type: String },
+    description: { type: String },
+    imageUrl: { type: String },
+    siteName: { type: String },
+    favIcon: { type: String },
+  },
+  { _id: false }
+);
+
 const messageSchema = new Schema<IMessage>(
   {
     conversationId: {
@@ -171,6 +194,10 @@ const messageSchema = new Schema<IMessage>(
     attachments: {
       type: [attachmentSchema],
       default: [],
+    },
+    linkPreview: {
+      type: linkPreviewSchema,
+      default: null,
     },
     replyTo: {
       type: replySnapshotSchema,

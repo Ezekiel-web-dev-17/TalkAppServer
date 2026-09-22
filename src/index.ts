@@ -11,9 +11,12 @@ const serverPort = PORT || 5000;
 connectMongoDB();
 
 import { initSocket } from "./lib/socket.js";
+import { attachmentWorker } from "./workers/attachment.worker.js";
+import { attachmentQueue } from "./queues/attachment.queue.js";
 
 const server = app.listen(serverPort, () => {
   logger.info(`Server running in ${NODE_ENV || "development"} mode on port ${serverPort}`);
+  logger.info("BullMQ attachment upload worker running.");
 });
 
 // Initialize Socket.io real-time WebSocket server
@@ -23,6 +26,13 @@ logger.info("Real-time WebSocket server initialized.");
 const gracefulShutdown = async () => {
   logger.info("Initiating graceful shutdown...");
   server.close(async () => {
+    try {
+      await attachmentWorker.close();
+      await attachmentQueue.close();
+      logger.info("BullMQ attachment worker and queue closed.");
+    } catch (err) {
+      logger.error("Error closing BullMQ:", err);
+    }
     await prisma.$disconnect();
     redis.disconnect();
     await disconnectMongoDB();
