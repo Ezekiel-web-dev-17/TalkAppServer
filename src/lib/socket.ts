@@ -251,6 +251,19 @@ export function emitMessageDeleted(
   }
 }
 
+export function emitMessageDeletedForSelf(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+): void {
+  if (io) {
+    io.to(`user:${userId}`).emit("message_deleted_self", {
+      conversationId,
+      messageId,
+    });
+  }
+}
+
 export function emitReactionUpdated(
   conversationId: string,
   data: { messageId: string; reactions: unknown },

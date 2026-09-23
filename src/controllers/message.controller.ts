@@ -3,7 +3,13 @@ import type { UploadedFile } from "express-fileupload";
 import prisma from "../lib/prisma.js";
 import { ApiError } from "../middlewares/error.middleware.js";
 import MessageModel, { IReplySnapshot } from "../models/message.model.js";
-import { emitNewMessage, emitMessageEdited } from "../lib/socket.js";
+import {
+  emitNewMessage,
+  emitMessageEdited,
+  emitMessageDeleted,
+  emitMessageDeletedForSelf,
+  emitMessagesRead,
+} from "../lib/socket.js";
 import {
   extractUrls,
   fetchUrlPreview,
@@ -59,12 +65,12 @@ export const sendMessage = async (
       const normalizedMime = file.mimetype.toLowerCase().trim();
       if (!ALLOWED_MIME_TYPES[normalizedMime]) {
         throw ApiError.badRequest(
-          `Unsupported file type '${file.mimetype}' for file '${file.name}'.`
+          `Unsupported file type '${file.mimetype}' for file '${file.name}'.`,
         );
       }
       if (file.size <= 0 || file.size > MAX_ATTACHMENT_SIZE_BYTES) {
         throw ApiError.badRequest(
-          `File '${file.name}' exceeds the maximum allowed size of ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB.`
+          `File '${file.name}' exceeds the maximum allowed size of ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB.`,
         );
       }
     }
@@ -74,7 +80,7 @@ export const sendMessage = async (
     // If no text and no files, message is empty
     if (!normalizedContent && uploadedFiles.length === 0) {
       throw ApiError.badRequest(
-        "Message cannot be empty. Please provide text content or a file attachment."
+        "Message cannot be empty. Please provide text content or a file attachment.",
       );
     }
 
@@ -238,7 +244,70 @@ export const getConversationMessages = async (
   req: Request,
   res: Response,
   next: NextFunction,
-): Promise<void> => {};
+): Promise<void> => {
+  try {
+    const conversationId = req.params.conversationId as string;
+    const { limit, skip } = req.query;
+    const userId = req.auth.dbUser.id;
+
+    if (!userId) {
+      throw ApiError.unauthorized("User not found");
+    }
+
+    if (!conversationId) {
+      throw ApiError.badRequest("Conversation ID is required");
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+    });
+
+    if (!conversation) {
+      throw ApiError.notFound("No conversation with this conversationId");
+    }
+
+    const isMember = await prisma.conversationMember.findUnique({
+      where: {
+        conversationId_userId: {
+          conversationId,
+          userId,
+        },
+      },
+    });
+
+    if (!isMember) {
+      throw ApiError.forbidden(
+        "You are not allowed to view conversations you are not a member of.",
+      );
+    }
+
+    const parsedLimit = Number(limit) || 30;
+    const parsedSkip = Number(skip) || 0;
+
+    const filter = {
+      conversationId,
+      deletedFor: { $ne: userId },
+    };
+
+    const [messages, totalMessages] = await Promise.all([
+      MessageModel.find(filter)
+        .sort({ createdAt: -1 })
+        .limit(parsedLimit)
+        .skip(parsedSkip),
+      MessageModel.countDocuments(filter),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: messages,
+      limit: parsedLimit,
+      skip: parsedSkip,
+      total: totalMessages,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 /**
  * PATCH /api/v1/messages/:messageId
@@ -270,12 +339,12 @@ export const editMessage = async (
       const normalizedMime = file.mimetype.toLowerCase().trim();
       if (!ALLOWED_MIME_TYPES[normalizedMime]) {
         throw ApiError.badRequest(
-          `Unsupported file type '${file.mimetype}' for file '${file.name}'.`
+          `Unsupported file type '${file.mimetype}' for file '${file.name}'.`,
         );
       }
       if (file.size <= 0 || file.size > MAX_ATTACHMENT_SIZE_BYTES) {
         throw ApiError.badRequest(
-          `File '${file.name}' exceeds the maximum allowed size of ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB.`
+          `File '${file.name}' exceeds the maximum allowed size of ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB.`,
         );
       }
     }
@@ -284,7 +353,7 @@ export const editMessage = async (
 
     if (!normalizedContent && uploadedFiles.length === 0) {
       throw ApiError.badRequest(
-        "Please provide updated content or attachment files to edit this message."
+        "Please provide updated content or attachment files to edit this message.",
       );
     }
 
@@ -340,13 +409,140 @@ export const editMessage = async (
 
 /**
  * DELETE /api/v1/messages/:messageId
- * Soft-delete a message (author or conversation admin/user).
+ * Soft-delete a message for self or others (everyone).
+ * - "SELF": Hides the message for the current user only (adds userId to deletedFor).
+ * - "OTHERS" / "EVERYONE": Soft-deletes the message for all participants (author or conversation admin only).
  */
 export const deleteMessage = async (
   req: Request,
   res: Response,
   next: NextFunction,
-): Promise<void> => {};
+): Promise<void> => {
+  try {
+    const messageId = req.params.messageId as string;
+    const userId = req.auth.dbUser.id;
+
+    if (!userId) {
+      throw ApiError.unauthorized("User not found");
+    }
+
+    if (!messageId) {
+      throw ApiError.badRequest("Message ID is required");
+    }
+
+    const message = await MessageModel.findById(messageId);
+    if (!message) {
+      throw ApiError.notFound("No message with this messageId");
+    }
+
+    // Verify requester is a member of the conversation
+    const membership = await prisma.conversationMember.findUnique({
+      where: {
+        conversationId_userId: {
+          conversationId: message.conversationId,
+          userId,
+        },
+      },
+    });
+
+    if (!membership) {
+      throw ApiError.forbidden("You are not a member of this conversation");
+    }
+
+    // Parse delete mode/type: "SELF" vs "EVERYONE"
+    const rawType = (req.query.scope || "SELF").toString().trim().toUpperCase();
+
+    if (rawType !== "SELF" && rawType !== "EVERYONE") {
+      throw ApiError.badRequest(
+        "Invalid delete type. Expected 'SELF' or 'EVERYONE'",
+      );
+    }
+
+    const isDeleteForOthers =
+      rawType === "EVERYONE" || membership.role === "ADMIN";
+
+    if (isDeleteForOthers) {
+      const isAuthor = message.senderId === userId;
+
+      if (!isAuthor || membership.role !== "ADMIN") {
+        throw ApiError.forbidden(
+          "You are not allowed to delete messages for everyone unless you are the author or an admin",
+        );
+      }
+
+      const updatedMessage = await MessageModel.findByIdAndUpdate(
+        messageId,
+        {
+          deletedAt: new Date(),
+          deletedBy: userId,
+          content: `This message has been deleted by ${isAuthor ? "the author" : "an admin"}`,
+          contentType: "SYSTEM",
+          attachments: [],
+          linkPreview: null,
+        },
+        { new: true },
+      );
+
+      if (!updatedMessage) {
+        throw ApiError.notFound("No message with this messageId");
+      }
+
+      // Update conversation lastMessage summary if this was the last message
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: message.conversationId },
+        select: { lastMessage: true },
+      });
+
+      if ((conversation?.lastMessage as any)?.id === messageId) {
+        await prisma.conversation.update({
+          where: { id: message.conversationId },
+          data: {
+            lastMessage: {
+              id: message.id,
+              senderId: message.senderId,
+              senderName: message.sender?.username || "User",
+              text: "This message was deleted",
+              contentType: "SYSTEM",
+              createdAt: message.createdAt,
+            },
+          },
+        });
+      }
+
+      emitMessageDeleted(updatedMessage.conversationId, messageId);
+
+      res.status(200).json({
+        success: true,
+        message: "Message deleted for everyone",
+        data: updatedMessage,
+      });
+      return;
+    }
+
+    // Delete for self only: Add userId to deletedFor array
+    const updatedMessage = await MessageModel.findByIdAndUpdate(
+      messageId,
+      {
+        $addToSet: { deletedFor: userId },
+      },
+      { new: true },
+    );
+
+    if (!updatedMessage) {
+      throw ApiError.notFound("No message with this messageId");
+    }
+
+    emitMessageDeletedForSelf(userId, updatedMessage.conversationId, messageId);
+
+    res.status(200).json({
+      success: true,
+      message: "Message deleted for you",
+      data: updatedMessage,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 /**
  * POST /api/v1/messages/:messageId/reactions
@@ -366,4 +562,79 @@ export const markConversationAsRead = async (
   req: Request,
   res: Response,
   next: NextFunction,
-): Promise<void> => {};
+): Promise<void> => {
+  const conversationId = req.params.conversationId as string;
+  const userId = req.auth.dbUser.id;
+
+  try {
+    const membership = await prisma.conversationMember.findUnique({
+      where: {
+        conversationId_userId: {
+          conversationId,
+          userId,
+        },
+      },
+      select: {
+        id: true,
+        lastReadAt: true,
+      },
+    });
+
+    if (!membership) {
+      throw ApiError.notFound(
+        "No conversation member record found for this user",
+      );
+    }
+
+    const now = new Date();
+
+    const unreadFilter: Record<string, unknown> = {
+      conversationId,
+      senderId: { $ne: userId },
+      deletedFor: { $ne: userId },
+      "readBy.userId": { $ne: userId },
+    };
+
+    if (membership.lastReadAt) {
+      unreadFilter.createdAt = { $gt: membership.lastReadAt };
+    }
+
+    const unreadMessages = await MessageModel.updateMany(unreadFilter, {
+      $addToSet: {
+        readBy: {
+          userId,
+          readAt: now,
+        },
+      },
+    });
+
+    await prisma.conversationMember.update({
+      where: {
+        conversationId_userId: {
+          conversationId,
+          userId,
+        },
+      },
+      data: {
+        lastReadAt: now,
+        unreadCount: 0,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Conversation marked as read",
+      data: {
+        unreadCount: unreadMessages.modifiedCount,
+      },
+    });
+
+    emitMessagesRead(conversationId, {
+      conversationId,
+      userId,
+      readAt: now,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

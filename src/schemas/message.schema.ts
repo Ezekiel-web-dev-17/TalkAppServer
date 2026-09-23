@@ -71,9 +71,8 @@ export const EditMessageSchema = z.object({
 
 /** Query params for paginating through a conversation's message history */
 export const MessagePaginationQuerySchema = z.object({
-  /** ID of the message or timestamp to fetch messages *before* (cursor-based pagination) */
-  before: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
+  skip: z.coerce.number().int().min(0).default(0),
 });
 
 /** Route param: /:messageId */
@@ -89,6 +88,23 @@ export const MessageReactionSchema = z.object({
     .max(10, "Emoji value is too long"),
 });
 
+/** Options for deleting a message (for self or others) */
+export const DeleteMessageSchema = z.object({
+  type: z
+    .enum([
+      "SELF",
+      "OTHERS",
+      "EVERYONE",
+      "self",
+      "others",
+      "everyone",
+      "me",
+      "ME",
+    ])
+    .optional()
+    .default("SELF"),
+});
+
 // Inferred TypeScript types
 export type SendMessageInput = z.infer<typeof SendMessageSchema>;
 export type EditMessageInput = z.infer<typeof EditMessageSchema>;
@@ -96,3 +112,4 @@ export type MessagePaginationQuery = z.infer<
   typeof MessagePaginationQuerySchema
 >;
 export type MessageReactionInput = z.infer<typeof MessageReactionSchema>;
+export type DeleteMessageInput = z.infer<typeof DeleteMessageSchema>;

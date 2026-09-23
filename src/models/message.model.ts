@@ -72,6 +72,8 @@ export interface IMessage extends Document {
   isReply: boolean;
   isEdited: boolean;
   deletedAt: Date | null;
+  deletedBy?: string | null;
+  deletedFor: string[];
   deliveredTo: IMessageDelivery[];
   readBy: IMessageRead[];
   reactions: IMessageReaction[];
@@ -214,6 +216,14 @@ const messageSchema = new Schema<IMessage>(
     deletedAt: {
       type: Date,
       default: null,
+    },
+    deletedBy: {
+      type: String,
+      default: null,
+    },
+    deletedFor: {
+      type: [String],
+      default: [],
     },
     deliveredTo: [messageDeliverySchema],
     readBy: [messageReadSchema],

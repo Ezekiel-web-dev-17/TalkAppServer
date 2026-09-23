@@ -30,7 +30,10 @@ export const s3Client = new S3Client({
 export const MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB max size
 
 // Strict MIME type allow-lists
-export const ALLOWED_MIME_TYPES: Record<string, "IMAGE" | "AUDIO" | "VIDEO" | "FILE"> = {
+export const ALLOWED_MIME_TYPES: Record<
+  string,
+  "IMAGE" | "AUDIO" | "VIDEO" | "FILE"
+> = {
   // Images
   "image/jpeg": "IMAGE",
   "image/png": "IMAGE",
@@ -55,7 +58,8 @@ export const ALLOWED_MIME_TYPES: Record<string, "IMAGE" | "AUDIO" | "VIDEO" | "F
   "text/plain": "FILE",
   "application/zip": "FILE",
   "application/msword": "FILE",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "FILE",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    "FILE",
   "application/vnd.ms-excel": "FILE",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "FILE",
 };
@@ -80,11 +84,14 @@ export interface PresignedUrlResult {
  * Generate a cryptographically secure, time-limited presigned PUT URL for uploading attachments to S3.
  */
 export async function createPresignedUploadUrl(
-  options: GeneratePresignedUrlOptions
+  options: GeneratePresignedUrlOptions,
 ): Promise<PresignedUrlResult> {
   const bucket = AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME;
   if (!bucket) {
-    throw new ApiError(500, "AWS S3 storage is not configured (missing AWS_S3_BUCKET_NAME)");
+    throw new ApiError(
+      500,
+      "AWS S3 storage is not configured (missing AWS_S3_BUCKET_NAME)",
+    );
   }
 
   const { fileName, mimeType, sizeBytes, conversationId, userId } = options;
@@ -94,14 +101,14 @@ export async function createPresignedUploadUrl(
   const attachmentType = ALLOWED_MIME_TYPES[normalizedMime];
   if (!attachmentType) {
     throw ApiError.badRequest(
-      `Unsupported file type '${mimeType}'. Allowed types include common images, audio, video, and documents.`
+      `Unsupported file type '${mimeType}'. Allowed types include common images, audio, video, and documents.`,
     );
   }
 
   // 2. Validate file size
   if (sizeBytes <= 0 || sizeBytes > MAX_ATTACHMENT_SIZE_BYTES) {
     throw ApiError.badRequest(
-      `File size exceeds the allowable limit of ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB.`
+      `File size exceeds the allowable limit of ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB.`,
     );
   }
 
@@ -132,7 +139,7 @@ export async function createPresignedUploadUrl(
     : `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
 
   logger.info(
-    `[S3] Generated presigned upload URL for user ${userId} in conversation ${conversationId}: ${key}`
+    `[S3] Generated presigned upload URL for user ${userId} in conversation ${conversationId}: ${key}`,
   );
 
   return {
@@ -166,28 +173,32 @@ export interface DirectUploadResult {
  * Upload a local file directly to AWS S3.
  */
 export async function uploadFileToS3(
-  options: DirectUploadOptions
+  options: DirectUploadOptions,
 ): Promise<DirectUploadResult> {
   const bucket = AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME;
   if (!bucket) {
-    throw new ApiError(500, "AWS S3 storage is not configured (missing AWS_S3_BUCKET_NAME)");
+    throw new ApiError(
+      500,
+      "AWS S3 storage is not configured (missing AWS_S3_BUCKET_NAME)",
+    );
   }
 
-  const { filePath, fileName, mimeType, sizeBytes, conversationId, userId } = options;
+  const { filePath, fileName, mimeType, sizeBytes, conversationId, userId } =
+    options;
 
   // 1. Validate MIME type
   const normalizedMime = mimeType.toLowerCase().trim();
   const attachmentType = ALLOWED_MIME_TYPES[normalizedMime];
   if (!attachmentType) {
     throw ApiError.badRequest(
-      `Unsupported file type '${mimeType}'. Allowed types include common images, audio, video, and documents.`
+      `Unsupported file type '${mimeType}'. Allowed types include common images, audio, video, and documents.`,
     );
   }
 
   // 2. Validate file size
   if (sizeBytes <= 0 || sizeBytes > MAX_ATTACHMENT_SIZE_BYTES) {
     throw ApiError.badRequest(
-      `File size exceeds the allowable limit of ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB.`
+      `File size exceeds the allowable limit of ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB.`,
     );
   }
 
@@ -219,7 +230,7 @@ export async function uploadFileToS3(
     : `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
 
   logger.info(
-    `[S3] Uploaded attachment to S3 for user ${userId} in conversation ${conversationId}: ${key}`
+    `[S3] Uploaded attachment to S3 for user ${userId} in conversation ${conversationId}: ${key}`,
   );
 
   return {
@@ -231,4 +242,3 @@ export async function uploadFileToS3(
     sizeBytes,
   };
 }
-
